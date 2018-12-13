@@ -1,4 +1,4 @@
 #!/bin/bash
-service lliurex-analytics-server stop
+systemctl stop lliurex-analytics-server
 sleep 20
-service lliurex-analytics-server start
+systemctl start lliurex-analytics-server

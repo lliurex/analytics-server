@@ -1,0 +1,80 @@
+# mysql -t -uphp -p1234 -Danalytics < Queries.txt |tee Salida.txt
+
+create temporary table if not exists cv engine=memory as (select Client_uid,date,Releases_name,Flavours_name,string_release,arch,mem,ncpu,ltsp,mode from Client_Versions);
+create temporary table if not exists dates engine=memory as (select * from (select year,month from (select year,month from (select year,month from (select year(now()) as year union all select year(date_sub(now(),interval 1 year)))years inner join (select 1 as month union all select 2 union all select 3 union all select 4 union all select 5 union all select 6 union all select 7 union all select 8 union all select 9 union all select 10 union all select 11 union all select 12)months)dates where str_to_date(concat(year,'-',month,'-01'),'%Y-%m-%d') >= date_sub(now(),interval 1 year) and str_to_date(concat(year,'-',month,'-01'),'%Y-%m-%d') < now())compat)dates order by year, month);
+create temporary table if not exists compat_rf engine=memory as (select * from dates join (select name as rel from Releases where Releases.name != 'other')rels join (select name as fla from Flavours)flas);
+create temporary table if not exists compat_rfa engine=memory as (select * from compat_rf join (select 'x86_64' as arch union all select 'i686' union all select 'UNKN')arches);
+create temporary table if not exists compat_t engine=memory as (select * from dates join(select 0 as type union all select 1 union all select 'UNKN') types);
+create temporary table if not exists compat_m engine=memory as (select * from dates join (select 'THIN' as mode union all select 'SEMI' union all select 'FAT' union all select 'UNKN') types);
+/*Num total hosts detailed*/ create temporary table if not exists nhosts_detail engine=memory as (select * from compat_rf left join (select year,month,rel,fla,ifnull(count(*),0) as total_hosts from (select year(date) as year,month(date) as month,Releases_name as rel,Flavours_name as fla,Client_uid from (select Client_uid,Releases_name,Flavours_name,date from cv order by date desc)t group by year(date),month(date),Releases_name,Flavours_name,Client_uid)unique_last_clients group by year,month,rel,fla)detailed using (year,month,rel,fla));
+/*Num total hosts*/ create temporary table if not exists nhosts engine=memory as (select year,month,sum(total_hosts) as total_hosts from nhosts_detail group by year,month);
+/*Num host single entry*/ create temporary table if not exists single_entry engine=memory as (select year,month,ifnull(single_entry,0) as single_entry from dates left join (select year,month,count(*) as single_entry from (select year(date) as year, month(date) as month from cv group by year(date),month(date),Client_uid having count(*) = 1)a group by year,month)singles using(year,month));
+/*A+B*/ create temporary table if not exists ab engine=memory as (select distinct year,month,Client_uid from ( select Distinct Client_uid,Releases_name,year(date) as year,month(date) as month from cv)t group by year,month,Client_uid having count(*) > 1);
+create index a on ab (Client_uid,year,month) using btree;
+/*B+C+D*/ create temporary table if not exists bcd engine=memory as (select distinct year,month,Client_uid from ( select Distinct Client_uid,Flavours_name,year(date) as year,month(date) as month from cv)t group by year,month,Client_uid having count(*) > 1);
+create index a on bcd (Client_uid,year,month) using btree;
+/* B */ create temporary table if not exists b engine=memory as (select * from ab join bcd using(year,month,Client_uid));
+/* A */ create temporary table if not exists a engine=memory as (select * from ab left join bcd using(year,month,Client_uid) where bcd.Client_uid is null);
+/* A+B+C */ create temporary table if not exists abc_plus_part_e engine=memory as (select distinct year,month,Client_uid from ( select Distinct Client_uid,string_release,year(date) as year,month(date) as month from cv)t group by year,month,Client_uid having count(*) > 1);
+create index a on abc_plus_part_e (Client_uid,year,month) using btree;
+/* C+D */ create temporary table if not exists cd engine=memory as (select * from ab right join bcd using(year,month,Client_uid) where ab.Client_uid is null);
+create index a on cd (Client_uid,year,month) using btree;
+/* D */ create temporary table if not exists d engine=memory as (select * from cd left join abc_plus_part_e using(year,month,Client_uid) where abc_plus_part_e.Client_uid is null);
+create index a on d (Client_uid,year,month) using btree;
+/* C */ create temporary table if not exists c engine=memory as (select * from cd left join d using(year,month,Client_uid) where d.Client_uid is null );
+create temporary table if not exists na engine=memory as (select year,month,ifnull(a,0) as a from dates left join (select year,month,count(*) as a from a group by year,month)t using(year,month));
+create temporary table if not exists nb engine=memory as (select year,month,ifnull(b,0) as b from dates left join (select year,month,count(*) as b from b group by year,month)t using(year,month));
+create temporary table if not exists nc engine=memory as (select year,month,ifnull(c,0) as c from dates left join (select year,month,count(*) as c from c group by year,month)t using(year,month));
+create temporary table if not exists nd engine=memory as (select year,month,ifnull(d,0) as d from dates left join (select year,month,count(*) as d from d group by year,month)t using(year,month));
+/* temp */ create temporary table tmp_resume engine=memory as (select * from dates left join nhosts using(year,month) join single_entry using(year,month) join na using(year,month) join nb using(year,month) join nc using(year,month) join nd using(year,month));
+/* resume */ create temporary table resume engine=memory as (select year,month,total_hosts,single_entry,total_hosts-single_entry as target_hosts,a,b,c,d, total_hosts-single_entry-a-b-c-d as e from tmp_resume);
+
+select "RESUME TABLE" as "";
+select * from resume order by year desc, month desc;
+
+select "NHOSTS_DETAIL TABLE" as "";
+select * from nhosts_detail order by year desc, month desc;
+
+create temporary table if not exists target_arch engine=memory as (select year(date) as year,month(date) as month,Releases_name as rel,Flavours_name as fla,ifnull(if( arch like 'NULL',NULL,arch),'UNKN') as arch,count(distinct Client_uid) as total from cv group by year,month,Releases_name,Flavours_name,arch);
+select "TARGET_ARCH TABLE" as "";
+select compat_rfa.year,compat_rfa.month,compat_rfa.rel,compat_rfa.fla,compat_rfa.arch,ifnull(target_arch.total,0) as total from compat_rfa left join target_arch using(year,month,rel,fla,arch) order by year desc,month desc,rel asc,fla asc, arch asc;
+
+create temporary table if not exists target_memnull engine=memory as (select year(date) as year,month(date) as month,Releases_name as rel,Flavours_name as fla,count(distinct Client_uid) as total from cv where mem is null and date >= DATE_SUB(NOW(),interval 1 year) group by year,month,rel,fla);
+select "MEMNULL TABLE" as "";
+select 'MEMNULL TABLE',compat_rf.year,compat_rf.month,compat_rf.rel,compat_rf.fla,ifnull(target_memnull.total,0) as total from compat_rf left join target_memnull using(year,month,rel,fla) order by year desc,month desc,compat_rf.rel asc,compat_rf.fla asc;
+
+create temporary table if not exists target_mem2G engine=memory as (select year(date) as year,month(date) as month,Releases_name as rel,Flavours_name as fla,count(distinct Client_uid) as total from cv where mem < 2048000 and date >= DATE_SUB(NOW(),interval 1 year) group by year,month,rel,fla);
+select "MEM2G TABLE" as "";
+select compat_rf.year,compat_rf.month,compat_rf.rel,compat_rf.fla,ifnull(target_mem2G.total,0) as total from compat_rf left join target_mem2G using(year,month,rel,fla) order by year desc,month desc,compat_rf.rel asc,compat_rf.fla asc;
+
+create temporary table if not exists target_mem4G engine=memory as (select year(date) as year,month(date) as month,Releases_name as rel,Flavours_name as fla,count(distinct Client_uid) as total from cv where mem > 2048000 and mem < 4096000 and date >= DATE_SUB(NOW(),interval 1 year) group by year,month,rel,fla);
+select "MEM4G TABLE" as "";
+select compat_rf.year,compat_rf.month,compat_rf.rel,compat_rf.fla,ifnull(target_mem4G.total,0) as total from compat_rf left join target_mem4G using(year,month,rel,fla) order by year desc,month desc,compat_rf.rel asc,compat_rf.fla asc;
+
+create temporary table if not exists target_mem8G engine=memory as (select year(date) as year,month(date) as month,Releases_name as rel,Flavours_name as fla,count(distinct Client_uid) as total from cv where mem > 4096000 and date >= DATE_SUB(NOW(),interval 1 year) group by year,month,rel,fla);
+select "MEM8G TABLE" as "";
+select compat_rf.year,compat_rf.month,compat_rf.rel,compat_rf.fla,ifnull(target_mem8G.total,0) as total from compat_rf left join target_mem8G using(year,month,rel,fla) order by year desc,month desc,compat_rf.rel asc,compat_rf.fla asc;
+
+create temporary table if not exists target_cpunull engine=memory as (select year(date) as year,month(date) as month,Releases_name as rel,Flavours_name as fla,count(distinct Client_uid) as total from cv where ncpu is null and date >= DATE_SUB(NOW(),interval 1 year) group by year,month,rel,fla);
+select "CPUNULL TABLE" as "";
+select compat_rf.year,compat_rf.month,compat_rf.rel,compat_rf.fla,ifnull(target_cpunull.total,0) as total from compat_rf left join target_cpunull using(year,month,rel,fla) order by year desc,month desc,compat_rf.rel asc,compat_rf.fla asc;
+
+create temporary table if not exists target_cpu_mono engine=memory as (select year(date) as year,month(date) as month,Releases_name as rel,Flavours_name as fla,count(distinct Client_uid) as total from cv where ncpu < 2 and date >= DATE_SUB(NOW(),interval 1 year) group by year,month,rel,fla);
+select "CPUMONO TABLE" as "";
+select compat_rf.year,compat_rf.month,compat_rf.rel,compat_rf.fla,ifnull(target_cpu_mono.total,0) as total from compat_rf left join target_cpu_mono using(year,month,rel,fla) order by year desc,month desc,compat_rf.rel asc,compat_rf.fla asc;
+
+create temporary table if not exists target_cpu_dual engine=memory as (select year(date) as year,month(date) as month,Releases_name as rel,Flavours_name as fla,count(distinct Client_uid) as total from cv where ncpu > 1 and ncpu < 5 and date >= DATE_SUB(NOW(),interval 1 year) group by year,month,rel,fla);
+select "CPUDUAL TABLE" as "";
+select compat_rf.year,compat_rf.month,compat_rf.rel,compat_rf.fla,ifnull(target_cpu_dual.total,0) as total from compat_rf left join target_cpu_dual using(year,month,rel,fla) order by year desc,month desc,compat_rf.rel asc,compat_rf.fla asc;
+
+create temporary table if not exists target_cpu_more engine=memory as (select year(date) as year,month(date) as month,Releases_name as rel,Flavours_name as fla,count(distinct Client_uid) as total from cv where ncpu  > 4 and date >= DATE_SUB(NOW(),interval 1 year) group by year,month,rel,fla);
+select "CPUQUAD TABLE" as "";
+select compat_rf.year,compat_rf.month,compat_rf.rel,compat_rf.fla,ifnull(target_cpu_more.total,0) as total from compat_rf left join target_cpu_more using(year,month,rel,fla) order by year desc,month desc,compat_rf.rel asc,compat_rf.fla asc;
+
+create temporary table if not exists target_type engine=memory as(select year(date) as year,month(date) as month,ifnull(ltsp,'UNKN') as type,count(distinct Client_uid) as total from cv where Flavours_name = 'client' and date >= DATE_SUB(NOW(),interval 1 year) group by year,month,ltsp);
+select "TYPE TABLE" as "";
+select compat_t.year,compat_t.month,compat_t.type,ifnull(target_type.total,0) as total from compat_t left join target_type using(year,month,type) order by year desc,month desc,compat_t.type asc;
+
+create temporary table if not exists target_mode engine=memory as (select year(date) as year,month(date) as month,ifnull(mode,'UNKN') as mode,count(distinct Client_uid) as total from cv where Flavours_name = 'client' and date >= DATE_SUB(NOW(),interval 1 year) group by year,month,mode);
+select "MODE TABLE" as "";
+select compat_m.year,compat_m.month,compat_m.mode,ifnull(target_mode.total,0) as total from compat_m left join target_mode using(year,month,mode) order by year desc,month desc,compat_m.mode asc;

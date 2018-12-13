@@ -1,0 +1,37 @@
+Recomendations for server tunning:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* [Adjust apache processing module]
+    - Ex) Increasing mpm_prefork.conf
+
+        <IfModule mpm_prefork_module>
+            StartServers                 10
+            MinSpareServers               5
+            MaxSpareServers              20
+            MaxRequestWorkers           200
+            MaxConnectionsPerChild       10
+        </IfModule>
+
+* [Adjust mysql settings]
+    -Ex)
+
+            max_connections             =       500
+            key_buffer_size             =       64M
+            thread_cache_size           =       32
+            query_cache_limit           =       5M
+            query_cache_size            =       48M
+            innodb_buffer_pool_size     =       2000M
+            innodb_max_dirty_pages_pct  =       0.0
+            max_heap_table_size         =       1000M
+
+* [Use mod_evasive]
+    -Ex)
+
+        <IfModule mod_evasive20.c>
+            DOSHashTableSize    3097
+            DOSPageCount        10
+            DOSSiteCount        10
+            DOSPageInterval     10
+            DOSSiteInterval     10
+            DOSBlockingPeriod   60
+        </IfModule>

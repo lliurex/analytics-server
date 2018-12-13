@@ -1,0 +1,11 @@
+#!/bin/bash
+PWFILE=/etc/lliurex-analytics-server/config_db
+if [ -f "${PWFILE}" ]; then
+    USER=""
+    PW=""
+    USER="$(egrep -i '^user=' ${PWFILE}|cut -d'=' -f2)"
+    PW="$(egrep -i '^pass=' ${PWFILE}|cut -d'=' -f2)"
+    if [ -n "${USER}" -a -n "${PW}" ]; then
+	mysql -u${USER} -p${PW} -D analytics < /usr/lib/analytics-server/purge_old_data.sql
+    fi
+fi

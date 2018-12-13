@@ -1,0 +1,15 @@
+[Unit]
+Description=Analytics server daemon
+After=mysql.service
+
+[Service]
+Type=forking
+PIDFile=/var/run/analyticsd.pid
+ExecStart=/usr/sbin/analyticsd
+Restart=always
+TimeoutSec=120
+Nice=-1
+
+[Install]
+Alias=analyticsd.service
+WantedBy=multi-user.target

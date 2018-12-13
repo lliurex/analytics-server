@@ -1,0 +1,345 @@
+#!/bin/sh
+# postinst script
+#
+# see: dh_installdeb(1)
+
+set -e
+# AVOID DECOMENT WITHOUT DEBCONF QUESTIONS
+#. /usr/share/debconf/confmodule 
+
+# summary of how this script can be called:
+#        * <postinst> `configure' <most-recently-configured-version>
+#        * <old-postinst> `abort-upgrade' <new version>
+#        * <conflictor's-postinst> `abort-remove' `in-favour' <package>
+#          <new-version>
+#        * <postinst> `abort-remove'
+#        * <deconfigured's-postinst> `abort-deconfigure' `in-favour'
+#          <failed-install-package> <version> `removing'
+#          <conflicting-package> <version>
+# for details, see http://www.debian.org/doc/debian-policy/ or
+# the debian-policy package
+do_backup(){
+    USER=$1
+    PASS=$2
+    echo 'Doing backup into /etc/lliurex-analytics-server'
+    appdump="$(which mysqldump)"
+    if [ -z "$appdump" ]; then 
+        echo "Mysqldump not found"
+        return 0
+    fi
+    date="$(date +%s)"
+    mkdir -p /etc/lliurex-analytics-server
+    $($appdump $USER $PASS analytics 2>/dev/null| gzip -9 > /etc/lliurex-analytics-server/dump.$date ) || true
+}
+do_dialog(){
+    input=$(dialog      \
+        --title "$1"    \
+        --inputbox "$2"	0 0     \
+        3>&1 1>&2 2>&3 3>&-)
+        clear
+}
+ask_question(){
+    dialog --yesno "$1"	0 0
+    if [ $? -eq 0 ]; then
+        input=yes
+    else
+        input=no
+    fi
+    clear
+}
+
+case "$1" in
+    configure)
+    mysql_alive=""
+    retry=3
+    if [ -z "$mysql_alive" -a $retry -gt 0 ];then
+        mysql_alive="$(pidof mysqld || true)"
+        if [ -z "$mysql_alive" ]; then
+            echo "Trying to start mysql rc.d "
+            systemctl restart mysql || true
+            sleep 5
+        fi
+        retry=$(($retry -1))
+    fi
+    if [ $retry -eq 0 ];then
+        echo MySQL not running, no configuration possible, aborting...
+        exit 1
+    fi
+    ASK="no"
+
+#CHECK OLD CONFIG
+    if [ ! -d "/etc/lliurex-analytics-server" ]; then
+        ASK="yes"
+        echo "creating config directory"
+        mkdir /etc/lliurex-analytics-server
+    else
+        if [ -f "/etc/lliurex-analytics-server/config_db" ]; then
+            USER=$(cat /etc/lliurex-analytics-server/config_db|perl -ne '/user=(.*)/i && print $1')
+            PASS=$(cat /etc/lliurex-analytics-server/config_db|perl -ne '/pass=(.*)/i && print $1')
+            if [ -n "${USER}" -a -n "${PASS}" ]; then
+                RES=$(mysql -u${USER} -p${PASS} -N -s -Danalytics -e "show tables" 2>/dev/null || true)
+                if [ -n "${RES}" ]; then
+                    user="${USER}"
+                    pass="${PASS}"
+                    rootuser="-u${USER}"
+                    rootpass="-p${PASS}"
+                    ASK="no"
+                    echo "using user & pass from config_db file"
+                else
+                    echo "wrong user & pass into config_db file"
+                    ASK="yes"
+                fi
+            else
+                echo "user & pass not detected in config_db file"
+                ASK="yes"
+            fi
+        else
+            echo "config_db file not found"
+            ASK="yes"
+        fi
+    fi
+
+# ASK QUESTIONS
+    print_info="no"
+    ask_user="yes"
+    if [ "${ASK}" = "yes" ]; then
+        ask_question 'Desea configurar la base de datos analytics?'
+        if [ "x$input" = "xyes" ]; then
+            create_db=$input
+            ask_question 'Desea crear usuario para la tabla de la base de datos?'
+            create_user=$input
+            if [ "x$input" = "xyes" ]; then
+                do_dialog 'Database configuration' 'Nombre del usuario para crear:'
+                user=$input
+                do_dialog 'Database configuration' 'Password del usuario para crear:'
+                pass=$input
+            else
+                do_dialog 'Database configuration' 'Usuario con permiso en bd analytics?'
+                user=$input
+                do_dialog 'Database configuration' 'Password del usuario con permiso en bd analytics?'
+                pass=$input
+            fi
+            ask_root="yes"
+            if [ -f /etc/mysql/debian.cnf ]; then
+                root_test=$(mysql -u root -s -N -e "show databases" 2>/dev/null || true)
+                if [ -z "$root_test" ]; then
+                    rootuser=$(cat /etc/mysql/debian.cnf |grep -A 4 '\[client\]'|perl -ne '/user[ \t]*=[ \t]*(.*)/i && print $1')
+                    rootpass=$(cat /etc/mysql/debian.cnf |grep -A 4 '\[client\]'|perl -ne '/password[ \t]*=[ \t]*(.*)/i && print $1')
+                    if [ -n "$rootuser" -a -n "$rootpass" ]; then
+                        root_test=$(mysql -u $rootuser -p$rootpass -s -N -e "show databases" 2>/dev/null || true)
+                        if [ -n "$root_test" ]; then
+                            ask_root="no"
+                            rootuser="-u$rootuser"
+                            rootpass="-p$rootpass"
+                        fi
+                    fi
+                else
+                    ask_root="no"
+                    rootuser="-uroot"
+                    rootpass=""
+                fi
+            fi
+            if [ "x$ask_root" = "xyes" ]; then
+                do_dialog 'Database configuration' 'Mysql root user? (empty is root)'
+                if [ -z "$input" ]; then
+                    rootuser="root"
+                else
+                    rootuser=$input
+                fi
+                do_dialog 'Database configuration' 'Password root de mysql?'
+                rootpass=$input
+                root_test=$(mysql -u $rootuser -p$rootpass -s -N -e "show databases" 2>/dev/null || true)
+                if [ -z "$root_test" ]; then
+                    echo "Wrong password, leaving all unconfigured and aborting...."
+                    exit 0
+                else
+                    if [ -z "$rootuser" ]; then
+                        rootuser="-uroot"
+                    fi
+                    rootuser="-u$rootuser"
+                    if [ -z "$rootpass" ];then
+                        rootpass=""
+                    else
+                        rootpass="-p$rootpass"
+                    fi
+                fi
+            fi
+        else
+            print_info="yes"
+        fi
+    else
+    #ASK=no
+        create_db="no"
+        create_user="no"
+        ask_user="no"
+    fi
+
+# UPDATE DB FROM OLDER VERSIONS
+    do_backup "$rootuser" "$rootpass"
+
+    is_version_1=0
+    is_version_1_4=0
+
+    tables=$(mysql $rootuser $rootpass -s -N -Danalytics -e "show tables" 2>/dev/null || true)
+    if [ -n "$tables" ]; then
+        tables=$(echo $tables|grep historico_clients || true)
+        if [ -n "$tables" ]; then
+            is_version_1_4=1
+        else
+            tables=$(echo $tables|grep historico || true)
+            if [ -n "$tables" ]; then
+                is_version_1=1
+            fi
+        fi
+    fi
+    if [ "$is_version_1" = "1" ]; then
+        echo "Updating database from version 1"
+        mysql $rootuser $rootpass < /usr/lib/analytics-server/migrate_from_1.sql || true
+        create_db="no"
+    fi
+    if [ "$is_version_1_4" = "1" ]; then
+        echo "Updating database from version 1.4"
+        mysql $rootuser $rootpass < /usr/lib/analytics-server/migrate_from_1_4.sql || true
+        create_db="no"
+    fi
+
+    dumpfile="/usr/lib/analytics-server/analytics2.sql"
+
+    #keys=$(mysqldump $rootuser $rootpass analytics 2>/dev/null|egrep '^[[:space:]]*KEY'|wc -l)
+    #dumpfile="/usr/lib/analytics-server/analytics-0_1_3-to-0_1_4.sql"
+
+    #UPDATE FROM 0.1.3 to 0.1.4
+
+    #older_version="$2"
+    #target_update="0.1.4"
+
+    #need_update_to_0_1_4=no
+    #dpkg --compare-versions "$older_version" lt "$target_update" && need_update_to_0_1_4=yes
+    #if [ -z "$tables" -o $keys -ne 12 ]; then
+    #    need_update_to_0_1_4=yes
+    #    echo "failed database test for table historico_clients or keys"
+    #fi
+    #if [ "x$need_update_to_0_1_4" = "xyes" ]; then
+    #    echo Updating to database version upper than 0.1.4
+    #    if [ "x$dump_old_data" = "xyes" ]; then
+    #        mysqldump $rootuser $rootpass --no-create-info analytics > /tmp/__analytics_tmp__ 2>/dev/null
+    #    fi
+    #    mysql $rootuser $rootpass -s -N -e "drop database if exists analytics"
+    #    mysql $rootuser $rootpass < $dumpfile
+    #    mysql $rootuser $rootpass analytics < /tmp/__analytics_tmp__
+    #else
+    #    echo "Seems that database is newer than 0.1.4, skipping database migration"
+    #fi
+
+
+#INITIALIZE DB
+
+    if [ "x$create_db" = "xyes" ]; then
+        if [ "x$create_user" = "xyes" ]; then
+            mysql $rootuser $rootpass -s -N -e "create user '$user'@'%' identified by '$pass';" || true
+            mysql $rootuser $rootpass -s -N -e  "grant all privileges on analytics.* to '$user'@'%';" || true
+            mysql $rootuser $rootpass -s -N -e  "flush privileges;"
+            echo "user=$user" > /etc/lliurex-analytics-server/config_db
+            echo "pass=$pass" >> /etc/lliurex-analytics-server/config_db
+            chmod 750 /etc/lliurex-analytics-server/config_db
+        fi
+        mysql $rootuser $rootpass  < $dumpfile 
+    else
+        if [ "x$create_user" != "xyes" -a "${ask_user}" != "no" ]; then
+            do_dialog 'Analytics configuration' 'Usuario con permiso en bd analytics?'
+            user=$input
+            do_dialog 'Analytics configuration' 'Password del usuario con permiso en bd analytics?'
+            pass=$input
+            echo "user=$user" > /etc/lliurex-analytics-server/config_db
+            echo "pass=$pass" >> /etc/lliurex-analytics-server/config_db
+            chmod 640 /etc/lliurex-analytics-server/config_db
+        fi
+    fi
+
+    RES1=$(grep -o '@phpuser@' /usr/lib/analytics-server/analytics/config.php)
+    RES2=$(grep -o '@phppass@' /usr/lib/analytics-server/analytics/config.php)
+
+    if [ -f "/usr/lib/analytics-server/analytics/config.php" -a -n "${RES1}" -a -n "${RES2}" ]; then
+        sed -i.old -e "s/@phpuser@/$user/g" -e  "s/@phppass@/$pass/g" /usr/lib/analytics-server/analytics/config.php
+        rm /usr/lib/analytics-server/analytics/config.php.old
+        chmod 640 /usr/lib/analytics-server/analytics/config.php
+        apachectl_cmd=$(which apachectl)
+        apache_group=$(${apachectl_cmd} -t -D DUMP_RUN_CFG 2>/dev/null|perl -ne '/group:[ ]+name=\"(.*)\"/i && print $1')
+        if [ -z "${apache_group}" ]; then
+            echo "Warning: apache group not detected, falling back to www-data"
+            apache_group="www-data"
+        fi
+        chgrp ${apache_group} /usr/lib/analytics-server/analytics/config.php
+    else
+        echo "BUG !! WARNING: replace tags @phpuser@ & @phppass@ not found in /usr/lib/analytics-server/analytics/config.php"
+        echo "Installation may not work succesfully, report bug to developers"
+    fi
+
+    need_update_1_5=$(mysql $rootuser $rootpass -s -N -Danalytics -e "describe tmp_clients;" |grep ncpu |wc -l 2>/dev/null || true)
+    if [ "$need_update_1_5" = "0" ]; then
+        echo "Updating database to 1.5 format"
+        mysql $rootuser $rootpass < /usr/lib/analytics-server/update_allow_platformdata.sql || true
+    fi
+    need_update_1_6=$(mysql $rootuser $rootpass -s -N -Danalytics -e "describe tmp_clients;" |grep ltsp |wc -l 2>/dev/null || true)
+    if [ "$need_update_1_6" = "0" ]; then
+        echo "Updating database to 1.6 format"
+        mysql $rootuser $rootpass < /usr/lib/analytics-server/update2_allow_platformdata.sql || true
+    fi
+    mysql $rootuser $rootpass < /usr/lib/analytics-server/analytics_add_bionic.sql || true
+
+# MYSQL PARAMETERS
+    if grep -r "max_heap_table_size" /etc/mysql/mysql.conf.d/ > /dev/null;then 
+        echo max_heap_table_size configured!! leaving untouched!! 
+    else 
+        TMEM=$(cat /proc/meminfo |grep -i memtotal|awk '{print int($2/1024)}')
+        PMEM="256M"
+        if [ "$TMEM" -gt "1000" ]; then 
+            PMEM="500M"
+        fi
+        if [ "$TMEM" -gt "2000" ]; then 
+            PMEM="1000M"
+        fi
+        echo max_heap_table_size not configured!! setting $PMEM
+        printf "[mysqld]\nmax_heap_table_size=$PMEM\n" > /etc/mysql/mysql.conf.d/lliurex-analytics-server.cnf
+    fi;
+# CONFIG APACHE
+
+    if [ -e /usr/share/apache2/apache2-maintscript-helper ] ; then
+        . /usr/share/apache2/apache2-maintscript-helper
+        apache2_invoke enmod rewrite || exit $?
+        apache2_invoke ensite analytics || exit $?
+    fi
+
+    if [ "${print_info}" = "yes" ]; then
+            echo
+            echo "To import database schema use:"
+            echo ""
+            echo "echo \"create user '<user>'@'%' identified by '<password>';\" | mysql -u root -p<root_password>"
+            echo "echo \"grant all privileges on analytics.* to '<user>'@'%';\" | mysql -u root -p<root_password>"
+            echo "echo \"flush privileges; \" | mysql -u root -p<root_password>"
+            echo "mysql -u <user> -p<root_password> < /usr/lib/analytics-server/analytics.sql"
+            echo "After that, edit /usr/lib/analytics-server/analytics/config.php"
+            echo 
+            echo
+    fi
+
+
+    ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+    ;;
+esac
+
+# dh_installdeb will replace this with shell code automatically
+# generated by other debhelper scripts.
+
+#DEBHELPER#
+
+exit 0
+
+

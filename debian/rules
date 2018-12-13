@@ -1,0 +1,10 @@
+#!/usr/bin/make -f 
+
+#
+override_dh_install:
+	dh_install
+	sed -i -e 's/@swversion@/$(debian_version)/' debian/lliurex-analytics-server/usr/lib/analytics-server/analytics/config.php
+
+
+%:
+	dh $@ 

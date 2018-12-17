@@ -331,7 +331,7 @@ class DB():
         return 'other'
 
     def reduce_version(self,version):
-        if version[0:2] in ['15','16']:
+        if version[0:2] in ['15','16','19']:
             return version[0:2]
         else:
             return 'other'

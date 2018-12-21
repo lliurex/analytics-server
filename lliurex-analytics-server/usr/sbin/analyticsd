@@ -321,13 +321,14 @@ class DB():
                 return 'server'
             elif 'client' in flavour:
                 return 'client' 
-        elif version == '16':
+        elif version == '16' or version == '19':
             if 'server' in flavour:
                 return 'server'
             elif 'client' in flavour:
                 return 'client'
             elif 'desktop' in flavour:
                 return 'desktop'
+
         return 'other'
 
     def reduce_version(self,version):

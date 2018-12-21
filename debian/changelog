@@ -1,4 +1,4 @@
-lliurex-analytics-server (0.5.3) xenial; urgency=medium
+lliurex-analytics-server (0.5.3) bionic; urgency=medium
 
   * Fix parsing release 19 flavours
 

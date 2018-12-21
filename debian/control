@@ -8,7 +8,7 @@ Package: lliurex-analytics-server
 Architecture: all
 Depends: ${shlibs:Depends}, ${misc:Depends},
         debconf (>= 0.5) | debconf-2.0, po-debconf,
-        ucf, python3, python3-daemon, apache2, libapache2-mod-php7.0, php7.0-mysql, mysql-server, dialog, perl, python3-mysqldb, python3-psutil
+        ucf, python3, python3-daemon, apache2, libapache2-mod-php, php-mysql, mysql-server, dialog, perl, python3-mysqldb, python3-psutil
 Recommends: 
 Suggests: libapache2-mod-evasive
 Description: Statistics server for lliurex-analytics agent, this package contains the server part.

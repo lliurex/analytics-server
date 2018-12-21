@@ -1,3 +1,9 @@
+lliurex-analytics-server (0.5.3) trusty; urgency=medium
+
+  * Fix parsing release 19 flavours
+
+ -- M.Angel Juan <m.angel.juan@gmail.com>  Fri, 21 Dec 2018 13:13:31 +0100
+
 lliurex-analytics-server (0.5.2) trusty; urgency=medium
 
   * Fix css styles

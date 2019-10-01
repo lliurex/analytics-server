@@ -57,7 +57,7 @@ function get_sizes(id){
 function build_data_per_month_releases(data,title){
     var total=[];
     for (i=0 ; i < 12; i++){
-	total[i]={'15':0,'16':0,'all':0};
+	total[i]={'15':0,'16':0,'19':0,'all':0};
 	if (! data[i]){
 	    continue;
 	}
@@ -72,8 +72,13 @@ function build_data_per_month_releases(data,title){
                     total[i][rel]+=data[i][rel][fla];
                 }
             }
+            if (rel == '19'){
+                for (fla in data[i][rel]){
+                    total[i][rel]+=data[i][rel][fla];
+                }
+            }
         }
-        total[i]['all']=total[i]['15']+total[i]['16']; 
+        total[i]['all']=total[i]['15']+total[i]['16']+total[i]['19']; 
     }
     var dates_axis=[];
     var d= new Date();
@@ -83,6 +88,8 @@ function build_data_per_month_releases(data,title){
     data_table.addColumn({type:'string',role:'style'},'Style Release 15');
     data_table.addColumn('number','Total Release 16');
     data_table.addColumn({type:'string',role:'style'},'Style Release 16');
+    data_table.addColumn('number','Total Release 19');
+    data_table.addColumn({type:'string',role:'style'},'Style Release 19');
     data_table.addColumn('number','Total ALL Releases');
     data_table.addColumn({type:'string',role:'style'},'Style ALL Releases');
     date_values=[];
@@ -91,7 +98,7 @@ function build_data_per_month_releases(data,title){
         year=d.getFullYear();
         date_to_add=new Date(year,month)
         dates_axis.push(date_to_add);
-        date_values.push([date_to_add,total[i-1]['15'],'color:blue',total[i-1]['16'],'color:red',total[i-1]['all'],'color:grey'])
+        date_values.push([date_to_add,total[i-1]['15'],'color:blue',total[i-1]['16'],'color:red',total[i-1]['19'],'color:green',total[i-1]['all'],'color:grey'])
         d.setMonth(month-1);
     }
     data_table.addRows(date_values);
@@ -103,7 +110,7 @@ function build_data_per_month_releases(data,title){
                     legend:{textStyle:{fontSize: 10}},
                     chartArea:{left:'5%',right:'10%'},
                     focusTarget: 'category',
-                    colors:['blue','red','grey'],
+                    colors:['blue','red','green','grey'],
                     lineWidth: 5,
 		    tooltip: { textStyle: { fontSize: 10 } },
 		    backgroundColor: 'transparent',
@@ -218,7 +225,7 @@ function build_data_per_month_arch(data,title){
 function build_data_per_month_release_arch(data,title){
     var total=[];
     for (var i=0 ; i < 12; i++){
-        total[i]={'15_i686':0,'15_x86_64':0,'15_unkn':0,'16_i686':0,'16_x86_64':0,'16_unkn':0};
+        total[i]={'15_i686':0,'15_x86_64':0,'15_unkn':0,'16_i686':0,'16_x86_64':0,'16_unkn':0,'19_i686':0,'19_x86_64':0,'19_unkn':0};
         if (! data[i]){
             continue;
         }
@@ -247,6 +254,13 @@ function build_data_per_month_release_arch(data,title){
     data_table.addColumn({type:'string',role:'style'},'Style 16 x86_64');
     data_table.addColumn('number','Total 16 unkown');
     data_table.addColumn({type:'string',role:'style'},'Style 16 unknown');
+    data_table.addColumn('number','Total 19 x86');
+    data_table.addColumn({type:'string',role:'style'},'Style 19 x86');
+    data_table.addColumn('number','Total 19 x86_64');
+    data_table.addColumn({type:'string',role:'style'},'Style 19 x86_64');
+    data_table.addColumn('number','Total 19 unkown');
+    data_table.addColumn({type:'string',role:'style'},'Style 19 unknown');
+
 
     date_values=[];
     for (i=1;i <= 12;i++){
@@ -254,7 +268,7 @@ function build_data_per_month_release_arch(data,title){
         year=d.getFullYear();
         date_to_add=new Date(year,month)
         dates_axis.push(date_to_add);
-        date_values.push([date_to_add,total[i-1]['15_i686'],'color:purple',total[i-1]['15_x86_64'],'color:gold',total[i-1]['15_unkn'],'color:grey',total[i-1]['16_i686'],'color:teal',total[i-1]['16_x86_64'],'color:olive',total[i-1]['16_unkn'],'color:darkgrey'])
+        date_values.push([date_to_add,total[i-1]['15_i686'],'color:purple',total[i-1]['15_x86_64'],'color:gold',total[i-1]['15_unkn'],'color:grey',total[i-1]['16_i686'],'color:teal',total[i-1]['16_x86_64'],'color:olive',total[i-1]['16_unkn'],'color:darkgrey',total[i-1]['19_i686'],'color:orange',total[i-1]['19_x86_64'],'color:tomato',total[i-1]['19_unkn'],'color:lightsalmon'])
         d.setMonth(month-1);
     }
     data_table.addRows(date_values);
@@ -266,7 +280,7 @@ function build_data_per_month_release_arch(data,title){
                     legend:{textStyle:{fontSize: 10}},
                     chartArea:{left:'5%',right:'10%'},
                     focusTarget: 'category',
-                    colors: ['purple','gold','teal','olive'],
+                    colors: ['purple','gold','grey','teal','olive','darkgrey','orange','tomato','lightsalmon'],
                     lineWidth: 5,
 		    tooltip: { textStyle: { fontSize: 10 } },
 		    backgroundColor: 'transparent',
@@ -349,7 +363,7 @@ function build_data_per_month_releases_mem(data,title){
     var total=[];
     var sizes=['unkn','2G','4G','8G']
     for (var i=0 ; i < 12; i++){
-        total[i]={'15_2G':0,'15_4G':0,'15_8G':0,'15_unkn':0,'16_2G':0,'16_4G':0,'16_8G':0,'16_unkn':0};
+        total[i]={'15_2G':0,'15_4G':0,'15_8G':0,'15_unkn':0,'16_2G':0,'16_4G':0,'16_8G':0,'16_unkn':0,'19_2G':0,'19_4G':0,'19_8G':0,'19_unkn':0};
         for (var size in sizes){
             if (! data[sizes[size]][i]){
                 continue;
@@ -381,13 +395,23 @@ function build_data_per_month_releases_mem(data,title){
     data_table.addColumn({type:'string',role:'style'},'Style 16 > 4G');
     data_table.addColumn('number','Total 16 unknown');
     data_table.addColumn({type:'string',role:'style'},'Style 16 unknown');
+    data_table.addColumn('number','Total 19 < 2G');
+    data_table.addColumn({type:'string',role:'style'},'Style 19 < 2G');
+    data_table.addColumn('number','Total 19 < 4G');
+    data_table.addColumn({type:'string',role:'style'},'Style 19 < 4G');
+    data_table.addColumn('number','Total 19 > 4G');
+    data_table.addColumn({type:'string',role:'style'},'Style 19 > 4G');
+    data_table.addColumn('number','Total 19 unknown');
+    data_table.addColumn({type:'string',role:'style'},'Style 19 unknown');
+    
+
     date_values=[];
     for (i=1;i <= 12;i++){
         month=d.getMonth();
         year=d.getFullYear();
         date_to_add=new Date(year,month)
         dates_axis.push(date_to_add);
-        date_values.push([date_to_add,total[i-1]['15_2G'],'color:darkgoldenrod',total[i-1]['15_4G'],'color:goldenrod',total[i-1]['15_8G'],'color:gold',total[i-1]['15_unkn'],'color:lightgrey',total[i-1]['16_2G'],'color:darkviolet',total[i-1]['16_4G'],'color:deeppink',total[i-1]['16_8G'],'color:pink',total[i-1]['16_unkn'],'color:darkgrey'])
+        date_values.push([date_to_add,total[i-1]['15_2G'],'color:darkgoldenrod',total[i-1]['15_4G'],'color:goldenrod',total[i-1]['15_8G'],'color:gold',total[i-1]['15_unkn'],'color:lightgrey',total[i-1]['16_2G'],'color:darkviolet',total[i-1]['16_4G'],'color:deeppink',total[i-1]['16_8G'],'color:pink',total[i-1]['16_unkn'],'color:darkgrey',total[i-1]['19_2G'],'color:palegreen',total[i-1]['19_4G'],'color:springgreen',total[i-1]['19_8G'],'color:green',total[i-1]['19_unkn'],'color:darkseagreen',])
         d.setMonth(month-1);
     }
     data_table.addRows(date_values);
@@ -399,7 +423,7 @@ function build_data_per_month_releases_mem(data,title){
                     legend:{textStyle:{fontSize: 10}},
                     chartArea:{left:'5%',right:'10%'},
                     focusTarget: 'category',
-                    colors: ['darkgoldenrod','goldenrod','gold','lightgrey','darkviolet','deeppink','pink','darkgrey'],
+                    colors: ['darkgoldenrod','goldenrod','gold','lightgrey','darkviolet','deeppink','pink','darkgrey','palegreen','springgreen','green','darkseagreen'],
                     lineWidth: 5,
 		    tooltip: { textStyle: { fontSize: 10 } },
 		    backgroundColor: 'transparent',
@@ -645,7 +669,7 @@ function build_data_per_month_releases_cpu(data,title){
     var total=[];
     var sizes=['unkn','mono','dualquad','more']
     for (var i=0 ; i < 12; i++){
-        total[i]={'15_mono':0,'15_dualquad':0,'15_more':0,'15_unkn':0,'16_mono':0,'16_dualquad':0,'16_more':0,'16_unkn':0};
+        total[i]={'15_mono':0,'15_dualquad':0,'15_more':0,'15_unkn':0,'16_mono':0,'16_dualquad':0,'16_more':0,'16_unkn':0,'19_mono':0,'19_dualquad':0,'19_more':0,'19_unkn':0};
         for (var size in sizes){
             if (! data[sizes[size]][i]){
                 continue;
@@ -677,6 +701,14 @@ function build_data_per_month_releases_cpu(data,title){
     data_table.addColumn({type:'string',role:'style'},'Style 16 more than quad processor');
     data_table.addColumn('number','Total 16 unknown');
     data_table.addColumn({type:'string',role:'style'},'Style 16 unknown');
+    data_table.addColumn('number','Total 19 mono processor');
+    data_table.addColumn({type:'string',role:'style'},'Style 19 mono processor');
+    data_table.addColumn('number','Total 19 dual or quad processor');
+    data_table.addColumn({type:'string',role:'style'},'Style 19 dual or quad processor');
+    data_table.addColumn('number','Total 19 more than quad processor');
+    data_table.addColumn({type:'string',role:'style'},'Style 19 more than quad processor');
+    data_table.addColumn('number','Total 19 unknown');
+    data_table.addColumn({type:'string',role:'style'},'Style 19 unknown');
 
     date_values=[];
     for (i=1;i <= 12;i++){
@@ -684,7 +716,7 @@ function build_data_per_month_releases_cpu(data,title){
         year=d.getFullYear();
         date_to_add=new Date(year,month)
         dates_axis.push(date_to_add);
-        date_values.push([date_to_add,total[i-1]['15_mono'],'color:darkgoldenrod',total[i-1]['15_dualquad'],'color:goldenrod',total[i-1]['15_more'],'color:gold',total[i-1]['15_unkn'],'color:lightgrey',total[i-1]['16_mono'],'color:darkviolet',total[i-1]['16_dualquad'],'color:deeppink',total[i-1]['16_more'],'color:pink',total[i-1]['16_unkn'],'color:darkgrey'])
+        date_values.push([date_to_add,total[i-1]['15_mono'],'color:darkgoldenrod',total[i-1]['15_dualquad'],'color:goldenrod',total[i-1]['15_more'],'color:gold',total[i-1]['15_unkn'],'color:lightgrey',total[i-1]['16_mono'],'color:darkviolet',total[i-1]['16_dualquad'],'color:deeppink',total[i-1]['16_more'],'color:pink',total[i-1]['16_unkn'],'color:darkgrey',total[i-1]['19_mono'],'color:palegreen',total[i-1]['19_dualquad'],'color:springgreen',total[i-1]['16_more'],'color:green',total[i-1]['16_unkn'],'color:darkseagreen'])
         d.setMonth(month-1);
     }
     data_table.addRows(date_values);
@@ -696,7 +728,7 @@ function build_data_per_month_releases_cpu(data,title){
                     legend:{textStyle:{fontSize: 10}},
                     chartArea:{left:'5%',right:'10%'},
                     focusTarget: 'category',
-                    colors: ['darkgoldenrod','goldenrod','gold','lightgrey','darkviolet','deeppink','pink','darkgrey'],
+                    colors: ['darkgoldenrod','goldenrod','gold','lightgrey','darkviolet','deeppink','pink','darkgrey','palegreen','springgreen','green','darkseagreen'],
                     lineWidth: 5,
 		    tooltip: { textStyle: { fontSize: 10 } },
 		    backgroundColor: 'transparent',

@@ -48,6 +48,24 @@ $distros=
       ]
     },
     {
+      "name": "19",
+      "like": "19",
+      "sabor": [
+        {
+          "name": "desktop",
+          "like": "desktop"
+        },
+        {
+          "name": "server",
+          "like": "server"
+        },
+        {
+          "name": "client",
+          "like": "client"
+        }
+      ]
+    },
+    {
       "name": "other",
       "like": "",
       "sabor": [

@@ -1,3 +1,9 @@
+lliurex-analytics-server (0.5.4) trusty; urgency=medium
+
+  * Show distro 19 
+
+ -- M.Angel Juan <m.angel.juan@gmail.com>  Tue, 01 Oct 2019 09:42:29 +0200
+
 lliurex-analytics-server (0.5.3) trusty; urgency=medium
 
   * Fix parsing release 19 flavours

@@ -74,8 +74,8 @@ case "$1" in
         mkdir /etc/lliurex-analytics-server
     else
         if [ -f "/etc/lliurex-analytics-server/config_db" ]; then
-            USER=$(cat /etc/lliurex-analytics-server/config_db|perl -ne '/user=(.*)/i && print $1')
-            PASS=$(cat /etc/lliurex-analytics-server/config_db|perl -ne '/pass=(.*)/i && print $1')
+            USER=$(cat /etc/lliurex-analytics-server/config_db|perl -ne '/\s*user\s*=\s*(\S*)\s*/i && print $1')
+            PASS=$(cat /etc/lliurex-analytics-server/config_db|perl -ne '/\s*pass\s*=\s*(\S*)\s*/i && print $1')
             if [ -n "${USER}" -a -n "${PASS}" ]; then
                 RES=$(mysql -u${USER} -p${PASS} -N -s -Danalytics -e "show tables" 2>/dev/null || true)
                 if [ -n "${RES}" ]; then

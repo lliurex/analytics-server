@@ -1,3 +1,9 @@
+lliurex-analytics-server (0.6.0) UNRELEASED; urgency=medium
+
+  * Focal release 
+
+ -- M.Angel Juan <m.angel.juan@gmail.com>  Mon, 16 Nov 2020 18:06:00 +0100
+
 lliurex-analytics-server (0.5.4) bionic; urgency=medium
 
   * Show distro 19

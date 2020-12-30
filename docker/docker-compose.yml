@@ -1,0 +1,211 @@
+version: '3.8'
+services:
+    listener:
+        build:
+            context: listener
+        volumes:
+            - ./listener/src/listener.py:/app/app.py:ro
+        command: [ "sh", "-c", "test -z $$LOG_LEVEL && python /app/app.py >/dev/null 2>&1 || python /app/app.py" ]
+        links:
+            - queue
+        depends_on:
+            - queue
+        env_file: .env
+        environment:
+        #   (NEEDED FOR BALANCED PROXY SCALED LISTENERS)
+            VIRTUAL_HOST: "aplicaciones.lliurex.net"
+        #    (OVERRIDE LOG_LEVEL FROM .env)
+        #    LOG_LEVEL: 'INFO'
+        restart: unless-stopped
+        healthcheck:
+            test: curl -f http://localhost:$$LISTENER_PORT/analytics/health|grep -q True || kill 1
+            interval: 30s
+            timeout: 3s
+            retries: 1
+            start_period: 30s
+        # (ignored by docker-compose up, use docker-compose up --scale listener=4)
+        # deploy:
+        #     replicas: 4
+        #     placement:
+        #         max_replicas_per_node: 1
+        #     update_config:
+        #         parallelism: 2
+        #         delay: 10s
+        #     restart_policy:
+        #         condition: on-failure
+
+    analyticsd:
+        build:
+            context: consumer
+        volumes:
+            - ./consumer/src/analyticsd.py:/app/app.py:ro
+        command:  [ "sh", "-c", "test -z $$LOG_LEVEL && python /app/app.py >/dev/null 2>&1 || python /app/app.py" ]
+        links:
+            - queue
+            - db
+        depends_on:
+            - queue
+            - db
+        env_file: .env
+        # (OVERRIDE LOG_LEVEL FROM .env)
+        # environment:
+        #     LOG_LEVEL: "INFO"
+        restart: unless-stopped
+        healthcheck:
+            test: grep -q True /tmp/analtytics-status-file || kill -10 1
+            interval: 120s
+            timeout: 3s
+            retries: 1
+            start_period: 120s
+
+    viewer:
+        build:
+            context: viewer
+        volumes:
+            - ./viewer/src/index.py:/app/app.py:ro
+            - ./viewer/src/static:/app/static:ro
+            - ./viewer/src/templates:/app/templates:ro
+        command:
+            [ "sh", "-c", "test -z $$LOG_LEVEL && python /app/app.py >/dev/null 2>&1 || python /app/app.py" ]
+        links:
+            - db
+        depends_on: 
+            - db
+        env_file: .env
+        # (OVERRIDE LOG_LEVEL FROM .env)
+        # environment: 
+        #     LOG_LEVEL: "DEBUG"
+        healthcheck:
+            test: curl -f http://localhost:$$LISTENER_PORT/analytics/health|grep -q true || kill 1
+            interval: 60s
+            timeout: 3s
+            retries: 1
+            start_period: 60s
+        restart: unless-stopped
+
+    queue:
+        image: rabbitmq:3-management-alpine
+        hostname: queue
+        entrypoint: ['sh', '-c', "test -z $$LOG_LEVEL && docker-entrypoint.sh rabbitmq-server >/dev/null 2>&1 || docker-entrypoint.sh rabbitmq-server"]
+        env_file: .env
+        # (OVERRIDE LOG_LEVEL FROM .env)
+        # environment: 
+        #      LOG_LEVEL: 'INFO'
+        volumes:
+        #   (POSSIBLE LOCAL RABBIT CONFIG)
+        #    - ./rabbitmq/etc:/etc/rabbitmq
+        #   (UNCOMMENT FOR RABBIT DATA INTO CONTAINER)
+        #    - ./rabbitmq/data:/var/lib/rabbitmq
+        #   (COMMENT FOR RABBIT DATA ON LOCAL FS)
+            - rabbitdata:/var/lib/rabbitmq
+        # (FOR DEBUG RABBIT PURPOSE)
+        # ports:
+        #     - 8081:15672
+        #     - 5672:5672
+        restart: unless-stopped
+        healthcheck:
+            test:
+                rabbitmq-diagnostics -q check_running && 
+                rabbitmq-diagnostics -q check_local_alarms && 
+                rabbitmq-diagnostics -q listeners && 
+                rabbitmq-diagnostics -q check_port_connectivity && 
+                rabbitmq-diagnostics -q check_virtual_hosts && 
+                rabbitmq-diagnostics -q check_running && 
+                rabbitmq-diagnostics -q ping || kill 1 
+            interval: 120s
+            timeout: 20s
+            retries: 1
+            start_period: 120s
+        # (ignored by docker-compose up)
+        # deploy:
+        #     replicas: 1
+        #     placement:
+        #         max_replicas_per_node: 1
+        #     update_config:
+        #         parallelism: 2
+        #         delay: 10s
+        #     restart_policy:
+        #         condition: on-failure
+
+    proxy:
+        image: jwilder/nginx-proxy:alpine
+        entrypoint: ['/app/docker-entrypoint.sh']
+        command: ["sh", "-c", "test -z $$LOG_LEVEL && forego start -r  >/dev/null 2>&1 || forego start -r" ]
+        env_file: .env
+        # (OVERRIDE LOG_LEVEL FROM .env)
+        # environment: 
+        #     LOG_LEVEL: "DEBUG"
+        volumes:
+            - ./nginx/Procfile:/app/Procfile:ro
+            - /var/run/docker.sock:/tmp/docker.sock:ro
+            - ./nginx/nginx.tmpl:/app/nginx.tmpl:ro
+            - proxycertdata:/etc/nginx/certs
+            - proxydhparamdata:/etc/nginx/dhparam
+        ports:
+            - 80:80
+        links:
+            - viewer
+        depends_on:
+            - listener
+            - viewer
+        healthcheck:
+            test: curl -s -HHost:$$PROXY_VHOST -f http://localhost/analytics/Index > /dev/null || kill 1
+            interval: 120s
+            timeout: 3s
+            retries: 1
+            start_period: 120s
+        # (ignored by docker-compose up)
+        # deploy:
+        #     replicas: 1
+        #     placement:
+        #         max_replicas_per_node: 1
+        #     update_config:
+        #         parallelism: 2
+        #         delay: 10s
+        #     restart_policy:
+        #         condition: on-failure
+    db:
+        image: mysql:8
+        command:
+            - --default-authentication-plugin=mysql_native_password 
+            - --character-set-server=utf8mb4
+            - --collation-server=utf8mb4_unicode_ci
+        restart: unless-stopped
+        cap_add:
+            - SYS_NICE  # CAP_SYS_NICE
+        volumes:
+            - ./mysql/my.cnf:/etc/mysql/conf.d/analytics.cnf:ro
+            - ./mysql/schema.sql:/docker-entrypoint-initdb.d/analytics.sql:ro
+            # (COMMENT FOR DATA INSIDE CONTAINER)
+            - ./mysql/db:/var/lib/mysql
+            #  (UNCOMMENT FOR DB DATA INTO CONTAINER)
+            # - dbdata:/var/lib/mysql
+        env_file: .env
+        # (FOR DEBUG DB & LOCALVIEWER/LOCALANALYTICSD/LOCALLISTENER PURPOSES)
+        # ports:
+        #     - 3306:3306
+        healthcheck:
+            test: echo "Select name from Releases;"|mysql -Ns -u$$MYSQL_USER -p$$MYSQL_PASSWORD $$MYSQL_DATABASE 2>/dev/null |xargs|grep -q '15 16 19 21 other'|| kill 1
+            interval: 120s
+            timeout: 3s
+            retries: 1
+            start_period: 120s
+
+    # adminer:
+    #     image: adminer
+    #     restart: unless-stopped
+    #     # (FOR DEBUG DB PURPOSES)
+    #     ports:
+    #         - 8082:8080
+    #     healthcheck:
+    #         test: curl -s -f http://localhost:8080 || kill 1
+    #         interval: 30s
+    #         timeout: 3s
+    #         retries: 1
+    #         start_period: 30s
+
+volumes:
+    dbdata:
+    rabbitdata:
+    proxycertdata:
+    proxydhparamdata:

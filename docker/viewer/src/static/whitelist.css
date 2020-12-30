@@ -1,0 +1,96 @@
+#nonwhitelist,#unknown_state_whitelist,#inwhitelist,span,#btn_right,#btn_left {
+    height: 100%;
+}
+html,body,#header,#configure_whitelist,select,span,#btn_right,#btn_left{
+    margin: 0px;
+    padding: 0px;
+}
+#configure_whitelist{
+    height: 80%;
+    padding: 0px 10px;
+    padding-top: 50px;
+    display: flex;
+    align-items: flex-end;
+}
+/*#header,#configure_whitelist,#nonwhitelist,#unknown_state_whitelist,#inwhitelist,span,#btn_left,#btn_right{
+    border: 0px solid red; /* some value */
+    margin: -0px; /*minus some value */
+}*/
+#nonwhitelist,#unknown_state_whitelist,#inwhitelist{
+    margin: 0px;
+    margin-bottom: -1px
+}
+#nonwhitelist,#unknown_state_whitelist,#inwhitelist{
+    width: 30%;
+    height: 100%;
+    display: grid;
+    grid-template-rows: 10fr 10fr 80fr;
+    text-align: center;
+}
+#btn_left,#btn_right{
+    width: 5%;
+    display: inline-grid;
+    align-items:center;
+    justify-content:center;
+}
+button{
+    color: darkslategrey;
+    clear: both;
+    width: 6ex;
+    display: block;
+    font-size: 3ex;
+}
+#nonwhitelist,#btn_left,#unknown_state_whitelist,#btn_right,#inwhitelist{ 
+    float: left;
+}
+#unknown_state_whitelist{
+    margin: -1px 1px;
+}
+#configure_whitelist span{
+    font-size: 3ex;
+    color: darkslategrey;
+    line-height: 3em;
+    font-style: italic;
+    text-decoration: underline;
+    font-family: sans-serif;
+}
+.filter{
+    margin-top: 10px;
+    font-size: 3ex;
+    font-style: italic;
+    color: darkslategrey;
+    border: 1px;
+    display: inline-flex;
+}
+select{
+    margin-top: 10px;
+    border: 2px dotted darkslategrey;
+}
+select>*{
+    color: darkslategrey;
+    font-size: 2ex;
+    margin-left: 10px;
+    margin-right: 10px;
+    margin-top: 5px;
+    width: 95%;
+    border-bottom: 1px dotted black;
+}
+#send{
+    margin-top: 10px;
+    margin-left: 200px;
+    display: flex;
+    justify-content:center;
+}
+#send>button{
+    width: 300px;
+    height: 3ex;
+    font-size: 3ex;
+    color: darkslategrey;
+}
+textarea{
+    float:right;
+    width:100%;
+    margin-left: 10px;
+    resize: none;
+    height: 3ex;
+}

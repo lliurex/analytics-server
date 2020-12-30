@@ -1,6 +1,7 @@
-#!/usr/bin/python
-import _mysql
-import urllib2
+#!/usr/bin/env python3
+
+import MySQLdb
+import urllib3
 import requests
 import sys
 from collections import deque
@@ -14,29 +15,30 @@ import threading
 import signal
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+from functools import reduce
 
 IP=''
 HOST='http://aplicaciones.lliurex.net/analytics/notify'
 HEADERS={'user-agent':'lliurex-statistics-agent'}
 TIMEOUT=30              # TIMEOUT SENDING REQUESTS
 
-RELEASES=['16','15']
+RELEASES=['16','15','19','21']
 MAX_RELNUMBER=5         # MAX RELEASE VARIATION
 REAL_FLAVOURS=True      # TRUE FLAVOURS (release 15)
-DATE_ROUNDS=1           # DIFERENTS MONTHS SENDED
-NCLIENTS=20           # NUMBER DIFFERENT CLIENTS
+DATE_ROUNDS=12           # DIFERENTS MONTHS SENDED
+NCLIENTS=1000           # NUMBER DIFFERENT CLIENTS
 MAX_THREADS=5           # PARALLEL CLIENTS SENDING DATA (> 5 == no effect)
 CACHE_CONNECTIONS=1     # python requests cache hosts
-NAPPS=5000                # MAX NUMBER DIFFERENT APPS
-CLIENT_MAX_APPS=100      # MAX NUMBER APPS SENDING
+NAPPS=10000                # MAX NUMBER DIFFERENT APPS
+CLIENT_MAX_APPS=500      # MAX NUMBER APPS SENDING
 CLIENT_UPDATE_FREQ=15    # PERCENT OF CLIENTS THAT UPDATE INTRA ROUND
 DO_UPGRADES = True
 UPGRADE_PROB=15          # PERCENT OF CLIENTS THAT UPGRADES WHEN UPDATE
 LOOPS=5                # LOOPS INTRA DATE LOOP
-SLEEP_THREAD_TIME=0     # SLEEP THREAD AFTER SENDING
+SLEEP_THREAD_TIME=0.0     # SLEEP THREAD AFTER SENDING
 STATS_ON=1              # req/s stats
 
-PRINT_UPDATES=True
+PRINT_UPDATES=False #True
 USE_PLATFORM_DATA=True
 USE_LTSP_DATA=True
 USE_LTSP_WITH_OLD_CLIENTS=False
@@ -91,6 +93,17 @@ if REAL_FLAVOURS:
                 {'name':'cdd,class,desktop,edu,live,lliurex,ltsp,server','real':'server'},
                 {'name':'server,cdd','real':'server'},
                 {'name':'client,cdd','real':'client'}]
+    FLAVOURS['19']=[
+                {'name':'server','real':'server'},
+                {'name':'client','real':'client'},
+                {'name':'desktop','real':'desktop'},
+                {'name':'other','real':'other'}]
+    FLAVOURS['21']=[
+                {'name':'server','real':'server'},
+                {'name':'client','real':'client'},
+                {'name':'desktop','real':'desktop'},
+                {'name':'other','real':'other'}]
+
 else:
     FLAVOURS['16']=[
                 {'name':'server','real':'server'},
@@ -98,6 +111,16 @@ else:
                 {'name':'desktop','real':'desktop'},
                 {'name':'other','real':'other'}]
     FLAVOURS['15']=[
+                {'name':'server','real':'server'},
+                {'name':'client','real':'client'},
+                {'name':'desktop','real':'desktop'},
+                {'name':'other','real':'other'}]
+    FLAVOURS['19']=[
+                {'name':'server','real':'server'},
+                {'name':'client','real':'client'},
+                {'name':'desktop','real':'desktop'},
+                {'name':'other','real':'other'}]
+    FLAVOURS['21']=[
                 {'name':'server','real':'server'},
                 {'name':'client','real':'client'},
                 {'name':'desktop','real':'desktop'},
@@ -114,17 +137,17 @@ class DB():
 
     def init_db(self):
         try:
-            self.conn = _mysql.connect(IP,USER,PASS,DBNAME)
-            print "Connected succesfully"
+            self.conn = MySQLdb.connect(IP,USER,PASS,DBNAME)
+            print("Connected succesfully")
 
-        except _mysql.Error, e:
-            print "Error {}: {}".format(e.args[0],e.args[1])
+        except MySQLdb.Error as e:
+            print("Error {}: {}".format(e.args[0],e.args[1]))
             sys.exit(1)
 
     def close_db(self):
         if self.conn:
             self.conn.close()
-            print "Closed connection"
+            print("Closed connection")
 
 if RANDOM and NCLIENTS <= MAX_RANDOM_CLIENTS:
     MACS_USED=[]
@@ -154,7 +177,7 @@ class CLIENT():
         self.month=None
         self.day=None
         if RANDOM:
-            self.release=RELEASES[random.randint(0,4)%2] # more probabilities for the first listed release
+            self.release=RELEASES[random.randint(0,4)%len(RELEASES)] # more probabilities for the first listed release
         else:
             self.release=RELEASES[0]
         self.release_number=self.gen_rel_number()
@@ -193,11 +216,11 @@ class CLIENT():
         data['mem']=str(rnd*1024)
         data['vga']='VGA '+ data['mem'][0:2]
         data['cpu']='CPU '+ data['mem'][1:3]
-        data['ncpu']=str((rnd%3)+1)
+        data['ncpu']=str(2**(rnd%5))
         return data
 
     def info(self):
-        print '{} {} {} {}'.format(self.mac,self.release,self.release_number,self.flavour)
+        print('{} {} {} {}'.format(self.mac,self.release,self.release_number,self.flavour))
 
     def gen_mac(self):
         global NCLIENTS,MAX_RANDOM_CLIENTS,MACS_USED
@@ -228,8 +251,8 @@ class CLIENT():
         else:
             if RANDOM:
                 if self.year == None:
-                    self.year=random.randint(16,16+(MAX_RELNUMBER/12))
-                    self.month=random.randint(1,1+(MAX_RELNUMBER%12))
+                    self.year=random.randint(16,16+int(MAX_RELNUMBER/12))
+                    self.month=random.randint(1,1+int(MAX_RELNUMBER%12))
                     self.day=1
                 else:
                     self.month+=1
@@ -240,7 +263,7 @@ class CLIENT():
                     self.day=1
                 else:
                     self.month+=1
-            rnum='16.{}{:02d}{:02d}'.format(self.year,self.month,self.day)
+            rnum='{}.{}{:02d}{:02d}'.format(self.release,self.year,self.month,self.day)
         return rnum
 
     def gen_apps(self):
@@ -270,7 +293,7 @@ class CLIENT():
         self.release_number = self.gen_rel_number()
         if PRINT_UPDATES:
             if orev != self.release_number:
-                print '{} updates from {} to {}'.format(self.mac,orev,self.release_number)
+                print('{} updates from {} to {}'.format(self.mac,orev,self.release_number))
 
     def upgrades(self):
         prob = random.randint(0,100)
@@ -281,7 +304,7 @@ class CLIENT():
                 self.release_number = self.gen_rel_number()
                 if PRINT_UPDATES:
                     if orev != self.release_number:
-                        print '{} upgrade from {} to {}'.format(self.mac,orev,self.release_number)
+                        print('{} upgrade from {} to {}'.format(self.mac,orev,self.release_number))
         prob = random.randint(0,100)
         if prob < UPGRADE_PROB:
             if RANDOM:
@@ -293,7 +316,7 @@ class CLIENT():
             self.real_flavour=fla['real']
             if PRINT_UPDATES:
                 if ofla != self.real_flavour:
-                    print '{} change flavour from {} to {}'.format(self.mac,ofla,self.real_flavour)
+                    print('{} change flavour from {} to {}'.format(self.mac,ofla,self.real_flavour))
 
     def get_data(self):
         tmp={}
@@ -335,11 +358,11 @@ class TEST():
         global exit_threads
         exit_threads=1
         STATS_ON=0
-        print "Exitting.."
+        print("Exitting..")
         sys.exit(1)
 
     def prepare(self):
-        print 'Preparing clients... '
+        print('Preparing clients... ')
         pad=len(str(NCLIENTS))
         clean='\r\r\r\r\r\r\r\r\r\r';
         for i in range(NCLIENTS):
@@ -393,20 +416,20 @@ class TEST():
                 self.stats[cli.release]['flavours'][cli.real_flavour]=self.stats[cli.release]['flavours'][cli.real_flavour]+1
 
     def print_stats(self):
-        print ''
+        print('')
         for rel in RELEASES:
-            print 'RELEASE {}: {} clients ({} updated)'.format(rel,self.stats[rel]['nclients'],self.stats[rel]['nclients_updated'])
+            print('RELEASE {}: {} clients ({} updated)'.format(rel,self.stats[rel]['nclients'],self.stats[rel]['nclients_updated']))
             keys=self.stats[rel]['flavours'].keys()
-            keys.sort()
+            keys=sorted(keys)
             for key in keys:
-                print '\t{} : {}'.format(key,self.stats[rel]['flavours'][key])
-            print ''
+                print('\t{} : {}'.format(key,self.stats[rel]['flavours'][key]))
+            print('')
 
 
     def time_stats(self):
         global STATS_ON,NPET,PAUSE_SHOW_STATS,SUCCESS,DATE_ROUNDS
         global NCLIENTS,LOOPS
-        print "STATS_ON"
+        print("STATS_ON")
         total=NCLIENTS*LOOPS
         old_npet=[]*9
         f=lambda x,y: x+y
@@ -441,7 +464,7 @@ class TEST():
                 cli.inc_date+=1
           TOTAL_SENT={}
           ALL_SENT={}
-          for rel in ['15','16']:
+          for rel in RELEASES:
             TOTAL_SENT[rel]={}
             ALL_SENT[rel]={}
             for fla in ['desktop','server','client','other']:
@@ -454,7 +477,7 @@ class TEST():
               UPDATED_TOTAL=UPDATED
               sys.stderr.write('\nRound {}/{} Date round {}/{} ...\n'.format(i+1,LOOPS,k+1,DATE_ROUNDS))
               APPS_SENT={}
-              for rel in ['15','16']:
+              for rel in RELEASES:
                   APPS_SENT[rel]={}
                   for fla in ['desktop','server','client','other']:
                       APPS_SENT[rel][fla]=0
@@ -464,68 +487,67 @@ class TEST():
               except:
                 sys.stderr.write('Fatal error when threading\n')
 
-	      for rel in ['15','16']:
-		  for fla in ['desktop','server','client','other']:
-		      if not STATS_ON and DEBUG and DEBUG > 1:
-		         sys.stderr.write('\t{}:{} ({} apps sent ((tmp_packages count)insert or update))\n'.format(rel,fla,APPS_SENT[rel][fla]))
-		      TOTAL_SENT[rel][fla]=TOTAL_SENT[rel][fla]+APPS_SENT[rel][fla]
-		      ALL_SENT[rel][fla]=ALL_SENT[rel][fla]+APPS_SENT[rel][fla]
-		      for app in APPS_SENT[rel][fla+'apps']:
-			  if app not in ALL_SENT[rel][fla+'apps']:
-			      ALL_SENT[rel][fla+'apps'][app]=APPS_SENT[rel][fla+'apps'][app]
-			  else:
-			      ALL_SENT[rel][fla+'apps'][app]+=APPS_SENT[rel][fla+'apps'][app]
-	      if not STATS_ON:
-	        sys.stderr.write('\n')
-
+              for rel in RELEASES:
+                  for fla in ['desktop','server','client','other']:
+                      if not STATS_ON and DEBUG and DEBUG > 1:
+                         sys.stderr.write('\t{}:{} ({} apps sent ((tmp_packages count)insert or update))\n'.format(rel,fla,APPS_SENT[rel][fla]))
+                      TOTAL_SENT[rel][fla]=TOTAL_SENT[rel][fla]+APPS_SENT[rel][fla]
+                      ALL_SENT[rel][fla]=ALL_SENT[rel][fla]+APPS_SENT[rel][fla]
+                      for app in APPS_SENT[rel][fla+'apps']:
+                          if app not in ALL_SENT[rel][fla+'apps']:
+                              ALL_SENT[rel][fla+'apps'][app]=APPS_SENT[rel][fla+'apps'][app]
+                          else:
+                              ALL_SENT[rel][fla+'apps'][app]+=APPS_SENT[rel][fla+'apps'][app]
+              if not STATS_ON:
+                sys.stderr.write('\n')
           #STATS_ON=0
-	  total=0
-	  print "\n\nTOTAL APPS SENT AFTER DATE_ROUND {}/{}\n".format(k+1,DATE_ROUNDS)
-	  other_all_sent={}
+          total=0
+          print("\n\nTOTAL APPS SENT AFTER DATE_ROUND {}/{}\n".format(k+1,DATE_ROUNDS))
+          other_all_sent={}
           #mini_date_data={}
-	  for rel in ['15','16']:
-	      total_rel=0
-	      #mini_date_data[rel]={}
-	      for fla in ['desktop','server','client','other']:
-		  print "\tBY {} {} : {} sent (insert or update)(tmp_packages count)".format(rel,fla,ALL_SENT[rel][fla])
-		  total_rel=total_rel+ALL_SENT[rel][fla]
-		  if fla == 'other':
-		      for x in ALL_SENT[rel][fla+'apps']:
-			  if x in other_all_sent:
-			      other_all_sent[x]+=ALL_SENT[rel][fla+'apps'][x]
-			  else:
-			      other_all_sent[x]=ALL_SENT[rel][fla+'apps'][x]
-		  else:
-		      sorted_x=sorted(ALL_SENT[rel][fla+'apps'].items(),key=operator.itemgetter(1),reverse=True)
-		      #mini_date_data[rel][fla]=ALL_SENT[rel][fla+'apps'];
-		      for x in sorted_x[0:10]:
-			print "\t\t{}:{}".format(x[0],x[1])
-	      print "\tTOTAL RELEASE {} : {} sent (insert or update)(tmp_packages count)".format(rel,total_rel)
-	      total=total+total_rel
-	  
-	  print "\tOTHER (combined 15,16):"
-	  sorted_x=sorted(other_all_sent.items(),key=operator.itemgetter(1),reverse=True)
-	  for x in sorted_x[0:10]:
-	      print "\t\t{}:{}".format(x[0],x[1])
+          for rel in RELEASES:
+              total_rel=0
+              #mini_date_data[rel]={}
+              for fla in ['desktop','server','client','other']:
+                  print("\tBY {} {} : {} sent (insert or update)(tmp_packages count)".format(rel,fla,ALL_SENT[rel][fla]))
+                  total_rel=total_rel+ALL_SENT[rel][fla]
+                  if fla == 'other':
+                      for x in ALL_SENT[rel][fla+'apps']:
+                          if x in other_all_sent:
+                              other_all_sent[x]+=ALL_SENT[rel][fla+'apps'][x]
+                          else:
+                              other_all_sent[x]=ALL_SENT[rel][fla+'apps'][x]
+                  else:
+                      sorted_x=sorted(ALL_SENT[rel][fla+'apps'].items(),key=operator.itemgetter(1),reverse=True)
+                      #mini_date_data[rel][fla]=ALL_SENT[rel][fla+'apps'];
+                      for x in sorted_x[0:10]:
+                        print("\t\t{}:{}".format(x[0],x[1]))
+              print("\tTOTAL RELEASE {} : {} sent (insert or update)(tmp_packages count)".format(rel,total_rel))
+              total=total+total_rel
+          
+          print("\tOTHER (combined 15,16):")
+          sorted_x=sorted(other_all_sent.items(),key=operator.itemgetter(1),reverse=True)
+          for x in sorted_x[0:10]:
+              print("\t\t{}:{}".format(x[0],x[1]))
           #mini_date_data['other']={'other':other_all_sent}
-	  #DATE_DATA.append(mini_date_data)
-	  print "TOTAL ALL RELEASES : {} sent (insert or updated)(tmp_packages count)".format(total)
+          #DATE_DATA.append(mini_date_data)
+          print("TOTAL ALL RELEASES : {} sent (insert or updated)(tmp_packages count)".format(total))
           if SHOW_BY_APP:
                 sorted_apps=sorted(ALL_BY_APP.items(),key=operator.itemgetter(1),reverse=True)
-                print "\n~~~~~~~~~~~~~~~~~~~\n~~RESUME BY APPS:~~\n~~~~~~~~~~~~~~~~~~~\n"
+                print("\n~~~~~~~~~~~~~~~~~~~\n~~RESUME BY APPS:~~\n~~~~~~~~~~~~~~~~~~~\n")
                 for x in sorted_apps[0:20]:
-                    print "\t\t{}:{}".format(x[0],x[1])
+                    print("\t\t{}:{}".format(x[0],x[1]))
           elapsed_time=time.time()-start_time
-          print "\nEND DATE ROUND {}/{}\nCLIENTS UPDATED:{}\nTOTAL_CLIENTS:{}\nSUCCESS:{} req\nFAILED:{} req\nREDO:{} req\nELAPSED:{} secs\n{} req/s\n".format(k+1,DATE_ROUNDS,UPDATED_TOTAL,NCLIENTS+UPDATED_TOTAL,SUCCESS,FAILED,REDO,int(elapsed_time),int(SUCCESS/elapsed_time))
-	  if PAUSE_WITH_DATE_ROUNDS and DATE_ROUNDS > 1 and k != DATE_ROUNDS -1:
-	    PAUSE_SHOW_STATS=True
-	    readed=None
-	    while readed != '\n':
-                print "Now change date into server and press enter"
-	        readed=sys.stdin.readline()
-	    PAUSE_SHOW_STATS=False
+          print("\nEND DATE ROUND {}/{}\nCLIENTS UPDATED:{}\nTOTAL_CLIENTS:{}\nSUCCESS:{} req\nFAILED:{} req\nREDO:{} req\nELAPSED:{} secs\n{} req/s\n".format(k+1,DATE_ROUNDS,UPDATED_TOTAL,NCLIENTS+UPDATED_TOTAL,SUCCESS,FAILED,REDO,int(elapsed_time),int(SUCCESS/elapsed_time)))
+          if PAUSE_WITH_DATE_ROUNDS and DATE_ROUNDS > 1 and k != DATE_ROUNDS -1:
+            PAUSE_SHOW_STATS=True
+            readed=None
+            while readed != '\n':
+                print("Now change date into server and press enter")
+                readed=sys.stdin.readline()
+            PAUSE_SHOW_STATS=False
           '''
-          print "\n~~~~~~~~~~~~~~~~~~~\n~~~~  RESUME:  ~~~~\n~~~~~~~~~~~~~~~~~~~\n"
+          print("\n~~~~~~~~~~~~~~~~~~~\n~~~~  RESUME:  ~~~~\n~~~~~~~~~~~~~~~~~~~\n")
           #print(json.dumps(DATE_DATA))
           #print ""
           k=0
@@ -547,12 +569,12 @@ class TEST():
                             DATE_DATA[0][r][f]=value
              k+=1
           for r in DATE_DATA[0]:
-            print "TOTAL Release {}".format(r) 
+            print("TOTAL Release {}".format(r))
             for f in DATE_DATA[0][r]:
                sorted_x=sorted(DATE_DATA[0][r][f].items(),key=operator.itemgetter(1),reverse=True)
-               print "\tFlavour {}".format(f)
+               print("\tFlavour {}".format(f))
                for x in sorted_x[0:10]:
-                  print "\t\t{}: {}".format(x[0],x[1])
+                  print("\t\t{}: {}".format(x[0],x[1]))
 '''
 
 
@@ -579,7 +601,7 @@ class TEST():
                         r = self.sess.post(HOST,data=data,headers=HEADERS,timeout=TIMEOUT)
                         i = 0
                     except Exception as e:
-                        print 'R'+e+"\n"
+                        print('R'+e+"\n")
                         do=True
                         time.sleep(SLEEP_THREAD_TIME)
                     if do:
@@ -608,7 +630,7 @@ class TEST():
                     self.lock.acquire()
                     FAILED+=1
                     self.lock.release()
-                    print '{}'.format(data)
+                    print('{}'.format(data))
                     raise Exception('Reply NOK')
 
                 self.lock.acquire()

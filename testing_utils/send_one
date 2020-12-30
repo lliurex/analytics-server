@@ -1,0 +1,3 @@
+#!/bin/bash
+curl -v -X POST -d @one.msg http://aplicaciones.lliurex.net:8080/analytics/notify
+echo
